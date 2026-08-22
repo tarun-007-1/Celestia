@@ -1,11 +1,11 @@
-import 'dotenv/config';
-import {
-  Client,
-  GatewayIntentBits,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-} from 'discord.js';
+// bot.js
+// ============================================================
+// Discord bot that joins/leaves voice channels.
+// Reads config from config.json instead of .env.
+// ============================================================
+
+import { readFileSync } from 'fs';
+import { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } from 'discord.js';
 import {
   joinVoiceChannel,
   getVoiceConnection,
@@ -13,6 +13,11 @@ import {
   entersState,
 } from '@discordjs/voice';
 
+// ---- Load config ----
+const config = JSON.parse(readFileSync('config.json', 'utf8'));
+const { token, clientId } = config;
+
+// ---- Bot client ----
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -33,21 +38,22 @@ const commands = [
 ].map((c) => c.toJSON());
 
 async function registerCommands() {
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), {
+  const rest = new REST({ version: '10' }).setToken(token);
+  await rest.put(Routes.applicationCommands(clientId), {
     body: commands,
   });
-  console.log('Slash commands registered.');
+  console.log('✅ Slash commands registered.');
 }
 
 client.once('ready', async () => {
-  console.log(`Logged in as ${client.user.tag}`);
+  console.log(`✅ Logged in as ${client.user.tag}`);
   await registerCommands();
 });
 
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
+  // ---- /join ----
   if (interaction.commandName === 'join') {
     const member = interaction.member;
     const voiceChannel = member?.voice?.channel;
@@ -60,7 +66,6 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    // Defer immediately — joining can take longer than Discord's 3s reply window
     await interaction.deferReply();
 
     try {
@@ -71,12 +76,10 @@ client.on('interactionCreate', async (interaction) => {
         selfDeaf: false,
       });
 
-      // Wait until the connection is actually ready
       await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
-
       await interaction.editReply(`Joined **${voiceChannel.name}**.`);
     } catch (err) {
-      console.error('Voice connection failed:', err);
+      console.error('❌ Voice connection failed:', err);
       const conn = getVoiceConnection(voiceChannel.guild.id);
       if (conn) conn.destroy();
       await interaction.editReply(
@@ -85,6 +88,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   }
 
+  // ---- /leave ----
   if (interaction.commandName === 'leave') {
     const connection = getVoiceConnection(interaction.guildId);
     if (!connection) {
@@ -99,4 +103,4 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(token);
